@@ -9,7 +9,7 @@
 // The CLI is intentionally thin. Commands parse input and delegate
 // to the daemon (shipd). No container logic belongs in this package.
 package cli
-i
+
 import (
 	"os"
 
@@ -20,7 +20,7 @@ import (
 // "ship" with no arguments. It has no Run function of its own, so
 // calling it bare prints the help text listing all subcommands.
 var rootCmd = &cobra.Command{
-	Use:   "fastship",
+	Use:   "ship",
 	Short: "One tool. Local to production.",
 }
 
