@@ -2,8 +2,11 @@ package cli
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/theNutsua/FastShip/pkg/config"
+	"github.com/theNutsua/FastShip/pkg/detect"
 )
 
 // Every command below follows the same shape:
@@ -19,17 +22,67 @@ import (
 // App lifecycle
 
 // runCmd starts an app on the local machine.
-// Eventually this will: parse ship.yaml, detect the runtime, build
-// the image, start managed services, inject secrets, and run the
-// container all from this one command.
+// Currently, it loads and prints the resolved config. This is the first
+// real work FastShip does — proving the config pipeline (parse, default,
+// validate) works before any containers are involved.
 var runCmd = &cobra.Command{
 	Use:   "run [app]",
 	Short: "Run an app locally",
-	Args:  cobra.ExactArgs(1), // exactly one arg: the app name
+	Args:  cobra.ExactArgs(1),
 	Run: func(c *cobra.Command, args []string) {
-		appName := args[0]
-		fmt.Printf("run: %s — not implemented\n", appName)
+		// Empty path means "look for ship.yaml in the current directory".
+		cfg, err := config.Load("")
+		// Fill in whatever the engineer left out by scanning the repo.
+		res, err := detect.Apply(".", cfg)
+		if err != nil {
+			// Config errors are the engineer's to fix, so they go to stderr
+			// and exit non-zero — no stack trace, just the message.
+			_, err2 := fmt.Fprintln(os.Stderr, err)
+			if err2 != nil {
+				return
+			}
+			os.Exit(1)
+		}
+		// Always show what was inferred. A wrong guess the engineer can
+		// see is a one-line fix; a wrong guess they cannot see is a
+		// mystery bug an hour later.
+		fmt.Printf("→ %s\n\n", res)
+
+		printConfig(cfg)
 	},
+}
+
+// printConfig shows the resolved config — what the engineer wrote plus
+// everything FastShip filled in. Making defaults visible matters: if
+// detection or defaulting gets something wrong, they see it immediately
+// instead of debugging a mystery later.
+func printConfig(cfg *config.Config) {
+	fmt.Printf("app:       %s\n", cfg.Name)
+	fmt.Printf("port:      %d\n", cfg.Port)
+	fmt.Printf("scale:     %d-%d (drain %s)\n",
+		*cfg.Scale.Min, cfg.Scale.Max, cfg.Scale.DrainTimeout)
+	fmt.Printf("resources: %.1f cpu, %s\n",
+		cfg.Resources.CPU, cfg.Resources.Memory)
+
+	// Empty runtime is expected right now — pkg/detect fills it in next.
+	if cfg.Runtime == "" {
+		fmt.Printf("runtime:   (not detected yet)\n")
+	} else {
+		fmt.Printf("runtime:   %s\n", cfg.Runtime)
+	}
+
+	for _, svc := range cfg.Services {
+		kind := "managed"
+		if !svc.Managed() {
+			kind = "external → " + svc.URL
+		}
+		fmt.Printf("service:   %s (%s)\n", svc.Name, kind)
+	}
+
+	// Names only. A secret value must never reach terminal output.
+	for _, sec := range cfg.Secrets {
+		fmt.Printf("secret:    %s\n", sec.Name)
+	}
 }
 
 // deployCmd ships an app to a registered target server.
