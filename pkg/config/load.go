@@ -9,11 +9,11 @@ import (
 )
 
 // DefaultFilename is the config file FastShip looks for.
-const DefaultFilename = "ship.yaml"
+const DefaultFilename = "fastship.yaml"
 
-// Load reads a ship.yaml from disk, applies defaults, and validates it.
+// Load reads a fastship.yaml from disk, applies defaults, and validates it.
 // path may be a file or a directory. If it is a directory, Load looks
-// for ship.yaml inside it. An empty path means the current directory.
+// for fastship.yaml inside it. An empty path means the current directory.
 // The returned Config is ready to hand to any subsystem — defaults are
 // filled and validation has passed.
 func Load(path string) (*Config, error) {
@@ -42,7 +42,7 @@ func Parse(data []byte) (*Config, error) {
 	var cfg Config
 
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("parsing ship.yaml: %w", err)
+		return nil, fmt.Errorf("parsing fastship.yaml: %w", err)
 	}
 
 	// Defaults before validation: validation should judge the config as
@@ -65,7 +65,7 @@ func resolvePath(path string) (string, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		// Path does not exist. If it looks like a directory the user meant,
-		// still point at the expected file so the error names ship.yaml.
+		// still point at the expected file so the error names fastship.yaml.
 		return filepath.Join(path, DefaultFilename), nil
 	}
 
