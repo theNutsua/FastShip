@@ -6,6 +6,6 @@ import "github.com/theNutsua/FastShip/internal/cli"
 
 func main() {
 	// Execute parses os.Args, finds the matching command, and runs it.
-	// It handles its own exit codes, so nothing to do here.
+	// It handles its own exit codes, so nothing to do here
 	cli.Execute()
 }

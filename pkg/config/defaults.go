@@ -30,13 +30,14 @@ func (c *Config) applyDefaults() {
 		return
 	}
 
-	if c.Scale.Min == 0 {
-		c.Scale.Min = defaultScaleMin
+	if c.Scale.Min == nil {
+		one := defaultScaleMin
+		c.Scale.Min = &one // not set → default to 1
 	}
 	if c.Scale.Max == 0 {
 		// Max defaults to Min, not to some arbitrary ceiling. Auto-scaling
 		// should never be a surprise the engineer did not ask for.
-		c.Scale.Max = maxInt(c.Scale.Min, defaultScaleMax)
+		c.Scale.Max = maxInt(*c.Scale.Min, defaultScaleMax)
 	}
 	if c.Scale.DrainTimeout == "" {
 		c.Scale.DrainTimeout = defaultDrainTimeout

@@ -1,4 +1,4 @@
-// Package config defines the ship.yaml schema and everything needed
+// Package config defines the fastship.yaml schema and everything needed
 // to load, validate, and apply defaults to it.
 // This package is the single source of truth for what an engineer can
 // write in ship.yaml. Every other subsystem build, runtime, network,
@@ -111,7 +111,7 @@ type Secret struct {
 type Scale struct {
 	// Min is the floor. Production defaults to 2 so a single instance
 	// dying never takes the app down.
-	Min int `yaml:"min"`
+	Min *int `yaml:"min"`
 
 	// Max is the ceiling for auto-scaling.
 	Max int `yaml:"max"`

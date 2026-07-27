@@ -1,6 +1,9 @@
 package config
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // Validate checks that a config can actually be run.
 // It runs after defaults are applied, so it judges the config as
@@ -28,12 +31,22 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("port %d is out of range (0-65535)", c.Port)
 	}
 
-	if c.Scale.Min < 0 {
+	if *c.Scale.Min < 0 {
 		return fmt.Errorf("scale.min cannot be negative")
 	}
-	if c.Scale.Max < c.Scale.Min {
+	if c.Scale.Max < *c.Scale.Min {
 		return fmt.Errorf("scale.max (%d) cannot be less than scale.min (%d)",
 			c.Scale.Max, c.Scale.Min)
+	}
+	// DrainTimeout is a string so engineers can write "30s" instead of
+	// nanoseconds. That means a typo like "30 seconds" is possible, and
+	// it must fail here at config load — not at 3am during a scale-down.
+	if c.Scale.DrainTimeout != "" {
+		if _, err := time.ParseDuration(c.Scale.DrainTimeout); err != nil {
+			return fmt.Errorf(
+				"scale.drain_timeout %q is not a valid duration (try \"30s\" or \"2m\")",
+				c.Scale.DrainTimeout)
+		}
 	}
 
 	// Catch duplicate service names early. Two services with the same name
