@@ -1,3 +1,5 @@
 fastship
 *.exe
 .DS_Store
+.idea
+.idea*
