@@ -95,7 +95,7 @@ func Load() (*Store, error) {
 	if s.Creds == nil {
 		s.Creds = map[string]Credentials{}
 	}
-	
+	f
 	return s, nil
 }
 
