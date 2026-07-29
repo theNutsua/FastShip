@@ -1,7 +1,7 @@
 // Package config defines the fastship.yaml schema and everything needed
 // to load, validate, and apply defaults to it.
 // This package is the single source of truth for what an engineer can
-// write in ship.yaml. Every other subsystem build, runtime, network,
+// write in fastship.yaml. Every other subsystem build, runtime, network,
 // secrets, scale receives a typed *Config from here and never touches
 // raw YAML itself.
 //
@@ -9,7 +9,7 @@
 // is optional. Empty values here mean "detect it", not "error".
 package config
 
-// Config is one application as declared in ship.yaml.
+// Config is one application as declared in fastship.yaml.
 // The same struct serves both a single-app project and each entry under
 // the Apps map in a monorepo, which is why it is self-contained.
 type Config struct {
@@ -79,6 +79,25 @@ type Config struct {
 type Service struct {
 	// Name is the service identifier and its DNS hostname.
 	Name string `yaml:"name"`
+
+	// Image is the container image to run. Optional when Name matches a
+	// known preset (postgres, redis, ...), which supplies the image.
+	// Required for any other service — this is what lets ANY image be a
+	// service, not just a hardcoded list.
+	Image string `yaml:"image"`
+
+	// Port is the port the service listens on inside its container.
+	// A preset supplies a default; users set it for custom images.
+	Port int `yaml:"port"`
+
+	// Data is the path inside the container where the service keeps data
+	// that must persist. A volume is mounted here. Empty means stateless.
+	Data string `yaml:"data"`
+
+	// Env is service-specific configuration, merged over any preset
+	// defaults — so users can tune a known service or fully configure a
+	// custom one.
+	Env map[string]string `yaml:"env"`
 
 	// URL, when set, marks this as an external service. FastShip does not
 	// start or manage it, it only injects the address into the app.
