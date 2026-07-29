@@ -1,0 +1,4 @@
+name: myapp
+port: 3000
+services:
+  - postgres

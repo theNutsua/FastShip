@@ -1,12 +1,12 @@
-// Package detect infers what an engineer left out of ship.yaml.
+// Package detect infers what an engineer left out of fastship.yaml.
 // The product promise is that if FastShip can figure something out, the
 // engineer should not have to write it. This package is where that
 // happens: it scans a repository and fills in Runtime, Start, and Port.
 // Two rules govern everything here:
-//  1. Explicit always wins. A value already set in ship.yaml is never
+//  1. Explicit always wins. A value already set in fastship.yaml is never
 //     overwritten, no matter what the scan finds.
 //  2. Guessing silently is worse than failing loudly. When detection is
-//     ambiguous, return an error naming what to add to ship.yaml rather
+//     ambiguous, return an error naming what to add to fastship.yaml rather
 //     than picking one and hoping.
 package detect
 
@@ -27,7 +27,7 @@ type Result struct {
 // Apply fills in a Config's empty fields from a repository scan.
 //
 // repoPath is the directory to scan — usually the app's Path from
-// ship.yaml, or "." for a single-app project.
+// fastship.yaml, or "." for a single-app project.
 //
 // Fields already set in the Config are left untouched.
 func Apply(repoPath string, cfg *config.Config) (*Result, error) {

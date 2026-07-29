@@ -14,7 +14,7 @@ func (c *Config) Validate() error {
 		for name, app := range c.Apps {
 			if err := app.Validate(); err != nil {
 				// Prefix with the app name so the engineer knows which
-				// block in a long ship.yaml is broken.
+				// block in a long fastship.yaml is broken.
 				return fmt.Errorf("app %q: %w", name, err)
 			}
 		}

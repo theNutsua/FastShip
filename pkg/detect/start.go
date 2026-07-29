@@ -45,7 +45,7 @@ func DetectStart(repoPath, runtime string) (string, error) {
 
 	return "", fmt.Errorf(
 		"could not determine how to start a %s app\n\n"+
-			"add one to ship.yaml, for example:\n"+
+			"add one to fastship.yaml, for example:\n"+
 			"  start: ./run.sh", lang)
 }
 
@@ -77,7 +77,7 @@ func conventionalStart(repoPath, lang, format string) (string, error) {
 
 	return "", fmt.Errorf(
 		"could not find an entry point for this %s app\n\n"+
-			"add one to ship.yaml, for example:\n"+
+			"add one to fastship.yaml, for example:\n"+
 			"  start: %s", lang, fmt.Sprintf(format, "main file"))
 }
 

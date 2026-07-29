@@ -59,7 +59,7 @@ func DetectRuntime(repoPath string) (string, error) {
 	case 0:
 		return "", fmt.Errorf(
 			"could not detect a runtime in %s\n\n"+
-				"add one to ship.yaml, for example:\n"+
+				"add one to fastship.yaml, for example:\n"+
 				"  runtime: node@20", repoPath)
 
 	case 1:
@@ -73,7 +73,7 @@ func DetectRuntime(repoPath string) (string, error) {
 		// JS frontend. FastShip will not choose for you.
 		return "", fmt.Errorf(
 			"found multiple runtimes in %s: %s\n\n"+
-				"set one explicitly in ship.yaml:\n"+
+				"set one explicitly in fastship.yaml:\n"+
 				"  runtime: %s@%s\n\n"+
 				"or split them into separate apps with a path: for each",
 			repoPath, strings.Join(found, ", "),
