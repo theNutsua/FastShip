@@ -31,8 +31,7 @@ func (c *Config) applyDefaults() {
 	}
 
 	if c.Scale.Min == nil {
-		one := defaultScaleMin
-		c.Scale.Min = &one // not set → default to 1
+		c.Scale.Min = new(defaultScaleMin) // not set → default to 1
 	}
 	if c.Scale.Max == 0 {
 		// Max defaults to Min, not to some arbitrary ceiling. Auto-scaling
