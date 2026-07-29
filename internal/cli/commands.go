@@ -1,12 +1,13 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/theNutsua/FastShip/internal/engine"
 	"github.com/theNutsua/FastShip/pkg/config"
-	"github.com/theNutsua/FastShip/pkg/detect"
 )
 
 // Every command below follows the same shape:
@@ -21,35 +22,60 @@ import (
 
 // App lifecycle
 
-// runCmd starts an app on the local machine.
-// Currently, it loads and prints the resolved config. This is the first
-// real work FastShip does — proving the config pipeline (parse, default,
-// validate) works before any containers are involved.
+// runCmd tells the daemon to run an app.
+//
+// All the real work — build, plan, start, DNS, state — happens in the
+// daemon now. The CLI just sends the request and prints the result.
 var runCmd = &cobra.Command{
 	Use:   "run [app]",
 	Short: "Run an app locally",
 	Args:  cobra.ExactArgs(1),
 	Run: func(c *cobra.Command, args []string) {
-		// Empty path means "look for ship.yaml in the current directory".
-		cfg, err := config.Load("")
-		// Fill in whatever the engineer left out by scanning the repo.
-		res, err := detect.Apply(".", cfg)
-		if err != nil {
-			// Config errors are the engineer's to fix, so they go to stderr
-			// and exit non-zero — no stack trace, just the message.
-			_, err2 := fmt.Fprintln(os.Stderr, err)
-			if err2 != nil {
-				return
-			}
+		if err := clientRun(); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
 			os.Exit(1)
 		}
-		// Always show what was inferred. A wrong guess the engineer can
-		// see is a one-line fix; a wrong guess they cannot see is a
-		// mystery bug an hour later.
-		fmt.Printf("→ %s\n\n", res)
-
-		printConfig(cfg)
 	},
+}
+
+// clientRun sends a run request to the daemon from the current directory.
+func clientRun() error {
+	// The daemon is a separate process and does not share our working
+	// directory, so we tell it where we are — that is where the
+	// fastship.yaml and source live.
+	dir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	req := map[string]string{"dir": dir}
+	var resp struct {
+		App        string   `json:"app"`
+		Components []string `json:"components"`
+	}
+
+	fmt.Println("→ sending to daemon...")
+	if err := post("/run", req, &resp); err != nil {
+		return err
+	}
+
+	fmt.Printf("\n%s is running (%d component(s))\n", resp.App, len(resp.Components))
+	for _, comp := range resp.Components {
+		fmt.Printf("  - %s\n", comp)
+	}
+	fmt.Println("stop with: fastship stop " + resp.App)
+	return nil
+}
+
+// cleanup stops a set of already-started components. Used when a later
+// component fails, and we need to roll back the ones that succeeded.
+func cleanup(ctx context.Context, eng engine.Engine, handles []engine.Handle) {
+	for _, h := range handles {
+		err := eng.Stop(ctx, h, 5*1e9)
+		if err != nil {
+			return
+		} // 5 seconds in nanoseconds
+	}
 }
 
 // printConfig shows the resolved config — what the engineer wrote plus
@@ -103,40 +129,31 @@ var deployCmd = &cobra.Command{
 	},
 }
 
-// stopCmd gracefully shuts down a running app.
-// Real implementation will drain in-flight requests before sending
-// SIGTERM, so no request is dropped during shutdown.
 var stopCmd = &cobra.Command{
 	Use:   "stop [app]",
 	Short: "Stop a running app",
 	Args:  cobra.ExactArgs(1),
 	Run: func(c *cobra.Command, args []string) {
-		fmt.Printf("stop: %s — not implemented\n", args[0])
+		if err := clientStop(args[0]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
 	},
 }
 
-// statusCmd lists every app ship knows about and its health.
-// Takes no arguments — it always reports on everything.
-var statusCmd = &cobra.Command{
-	Use:   "status",
-	Short: "Show all running apps",
-	Args:  cobra.NoArgs, // reject any arguments
-	Run: func(c *cobra.Command, args []string) {
-		fmt.Println("status — not implemented")
-	},
-}
+func clientStop(app string) error {
+	req := map[string]string{"app": app}
+	var resp struct {
+		App    string `json:"app"`
+		Status string `json:"status"`
+	}
 
-// scaleCmd manually sets the instance count for an app.
-// This is the manual override. Auto-scaling based on CPU, memory,
-// and queue depth arrives in Phase 2.
-var scaleCmd = &cobra.Command{
-	Use:   "scale [app] [count]",
-	Short: "Scale an app to N instances",
-	Args:  cobra.ExactArgs(2), // app name and instance count
-	Run: func(c *cobra.Command, args []string) {
-		appName, count := args[0], args[1]
-		fmt.Printf("scale: %s to %s — not implemented\n", appName, count)
-	},
+	if err := post("/stop", req, &resp); err != nil {
+		return err
+	}
+
+	fmt.Printf("%s %s\n", resp.App, resp.Status)
+	return nil
 }
 
 // Observability
@@ -192,7 +209,7 @@ var secretsCmd = &cobra.Command{
 // secretsSetCmd stores an encrypted secret.
 
 // The value is encrypted at rest and injected into containers at
-// runtime. It never touches ship.yaml, git, or any log output.
+// runtime. It never touches fastship.yaml, git, or any log output.
 var secretsSetCmd = &cobra.Command{
 	Use:   "set [key] [value]",
 	Short: "Set a secret",
@@ -259,6 +276,31 @@ var targetListCmd = &cobra.Command{
 	Args:  cobra.NoArgs,
 	Run: func(c *cobra.Command, args []string) {
 		fmt.Println("target list — not implemented")
+	},
+}
+
+// statusCmd asks the daemon what's running.
+//
+// Stubbed for now — the daemon needs a /status endpoint before this can
+// show real data. Wired as a placeholder so the command exists.
+var statusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show all running apps",
+	Args:  cobra.NoArgs,
+	Run: func(c *cobra.Command, args []string) {
+		fmt.Println("status — not yet implemented in the daemon")
+	},
+}
+
+// scaleCmd sets an app's instance count.
+//
+// Stubbed for now — scaling isn't built yet.
+var scaleCmd = &cobra.Command{
+	Use:   "scale [app] [count]",
+	Short: "Scale an app to N instances",
+	Args:  cobra.ExactArgs(2),
+	Run: func(c *cobra.Command, args []string) {
+		fmt.Printf("scale: %s to %s — not yet implemented\n", args[0], args[1])
 	},
 }
 
