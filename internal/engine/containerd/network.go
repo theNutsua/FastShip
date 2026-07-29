@@ -15,7 +15,7 @@ import (
 // assignment, or namespace plumbing — the CNI plugins installed at
 // /opt/cni/bin do that. This type just drives them: "plug this container
 // in", "unplug it".
-type network struct {
+type a network struct {
 	cni gocni.CNI
 }
 
