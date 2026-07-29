@@ -69,7 +69,7 @@ type Handle struct {
 // Spec is everything an engine needs to start one component.
 //
 // It is deliberately expressed in FastShip's own vocabulary, not any
-// engine's. It is the planner's job to translate a ship.yaml component
+// engine's. It is the planner's job to translate a fastship.yaml component
 // into a Spec; it is the engine's job to translate a Spec into whatever
 // its backend understands.
 type Spec struct {
