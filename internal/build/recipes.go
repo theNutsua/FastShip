@@ -16,5 +16,7 @@ type recipe func(srcPath string, imageName string) llb.State
 // one for now; the pattern each recipe follows is identical, so adding
 // node and python later is filling in the same shape.
 var recipes = map[string]recipe{
-	"go": goRecipe,
+	"go":     goRecipe,
+	"node":   nodeRecipe,
+	"python": pythonRecipe,
 }
