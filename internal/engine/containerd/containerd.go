@@ -213,6 +213,14 @@ func (e *Engine) Start(ctx context.Context, spec engine.Spec) (engine.Handle, er
 		}))
 	}
 
+	// Set the working directory if the spec requests one. Interpreted
+	// runtimes like Node run a relative command (node server.js) and need
+	// the process to start in the app's directory. Compiled binaries at an
+	// absolute path (/app) do not, but setting it is harmless for them.
+	if spec.WorkDir != "" {
+		opts = append(opts, oci.WithProcessCwd(spec.WorkDir))
+	}
+	
 	// Override the start command if the Spec provides one.
 	if len(spec.Cmd) > 0 {
 		opts = append(opts, oci.WithProcessArgs(spec.Cmd...))
