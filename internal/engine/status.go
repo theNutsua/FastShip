@@ -26,19 +26,19 @@ const (
 	// treat this as a problem to investigate, never as "probably fine".
 	StateUnknown State = iota
 
-	// StateStarting: created and launched, but not yet passing health
+	// StateStarting StateStarting: created and launched, but not yet passing health
 	// checks. Traffic must not be routed to a component in this state.
 	StateStarting
 
-	// StateRunning: up and healthy. This is the only state in which a
+	// StateRunning StateRunning: up and healthy. This is the only state in which a
 	// component should receive traffic.
 	StateRunning
 
-	// StateStopped: exited cleanly, exit code 0. Expected for a finished
+	// StateStopped StateStopped: exited cleanly, exit code 0. Expected for a finished
 	// job; unexpected for a long-running service.
 	StateStopped
 
-	// StateFailed: exited non-zero, crashed, or could not start. Message
+	// StateFailed StateFailed: exited non-zero, crashed, or could not start. Message
 	// should explain why.
 	StateFailed
 )
