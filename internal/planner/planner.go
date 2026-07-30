@@ -111,12 +111,28 @@ func planApp(cfg *config.Config, serviceConns map[string]string) (engine.Spec, e
 		ports = append(ports, cfg.Port)
 	}
 
+	// The command to run depends on the runtime. The Go recipe compiles a
+	// single binary placed at /app, so Go apps run "/app". Other runtimes
+	// (Node, Python) keep their source and run an interpreter command that
+	// detection already resolved into cfg.Start, e.g. "node server.js".
+	var cmd []string
+	var workDir string
+	if languageOf(cfg.Runtime) == "go" {
+		cmd = []string{"/app"}
+		// Go binary is at an absolute path; no working dir needed.
+	} else {
+		cmd = strings.Fields(cfg.Start)
+		// Node/Python run a relative command from where their source lives.
+		workDir = "/app"
+	}
+
 	return engine.Spec{
-		Name:  cfg.Name,
-		Image: "",               //filled in by run after the build engine produces a custom image
-		Cmd:   []string{"/app"}, // the binary the build engine places at /app
-		Env:   env,
-		Ports: ports,
+		Name:    cfg.Name,
+		Image:   "",      //filled in by run after the build engine produces a custom image
+		Cmd:     cmd,     // the binary the build engine places at /app
+		WorkDir: workDir, // the working directory for the process
+		Env:     env,
+		Ports:   ports,
 		Resources: engine.Resources{
 			CPU:         cfg.Resources.CPU,
 			MemoryBytes: memBytes,
@@ -142,6 +158,16 @@ func loadOrCreateCredentials(app, service string) credentials {
 		})
 	}
 	return creds
+}
+
+// languageOf strips the version from a runtime string: "go@1.26" → "go".
+// A small local copy so the planner can branch on language without
+// importing the build package.
+func languageOf(runtime string) string {
+	if i := strings.IndexByte(runtime, '@'); i >= 0 {
+		return runtime[:i]
+	}
+	return runtime
 }
 
 //// planService builds the engine spec for a managed service like postgres.
