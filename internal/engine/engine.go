@@ -108,6 +108,8 @@ type Spec struct {
 	// read-only root filesystem, dropped capabilities. Engines apply this
 	// differently, which is exactly why it is a request, not a mechanism.
 	Hardened bool
+
+	WorkDir string // working directory inside the container; empty = default (/)
 }
 
 // Mount attaches persistent storage into a component.
