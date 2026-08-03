@@ -39,6 +39,7 @@ var runCmd = &cobra.Command{
 		}
 	},
 }
+var followLogs bool
 
 // clientRun sends a run request to the daemon from the current directory.
 func clientRun() error {
@@ -324,8 +325,13 @@ func clientLogs(name string) error {
 	if err := ensureDaemon(); err != nil {
 		return err
 	}
+	url := "http://localhost/logs?name=" + name
+	if followLogs {
+		url += "&follow=true"
+	}
+
 	client := newClient()
-	resp, err := client.Get("http://localhost/logs?name=" + name)
+	resp, err := client.Get(url)
 	if err != nil {
 		return err
 	}
@@ -339,8 +345,7 @@ func clientLogs(name string) error {
 		return fmt.Errorf("%s", e.Error)
 	}
 
-	// Stream the logs to our stdout.
-	io.Copy(os.Stdout, resp.Body)
+	io.Copy(os.Stdout, resp.Body) // streams until Ctrl+C when following
 	return nil
 }
 
@@ -358,6 +363,8 @@ func init() {
 
 	// debug defaults to local since that is where it is used most.
 	debugCmd.Flags().StringP("env", "e", "local", "environment")
+
+	logsCmd.Flags().BoolVarP(&followLogs, "follow", "f", false, "stream new logs as they arrive")
 
 	// Attach subcommands. Without this, "ship secrets set" is unknown.
 	secretCmd.AddCommand(secretSetCmd, secretGetCmd, secretListCmd)

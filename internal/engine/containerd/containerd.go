@@ -400,13 +400,52 @@ func (e *Engine) Stop(ctx context.Context, h engine.Handle, drain time.Duration)
 // The engine captures each container's stdout and stderr to a log file
 // when the task is created. This opens that file for reading. The caller
 // streams from it and closes it when done.
-func (e *Engine) Logs(ctx context.Context, h engine.Handle) (io.ReadCloser, error) {
+func (e *Engine) Logs(ctx context.Context, h engine.Handle, follow bool) (io.ReadCloser, error) {
 	logPath := filepath.Join("/var/lib/fastship/logs", h.Name+".log")
 	f, err := os.Open(logPath)
 	if err != nil {
 		return nil, fmt.Errorf("no logs for %s: %w", h.Name, err)
 	}
-	return f, nil // *os.File is an io.ReadCloser; caller closes it
+
+	if !follow {
+		return f, nil // plain read to EOF
+	}
+
+	// Following: wrap the file so that at EOF it waits for more data
+	// instead of stopping. ctx cancellation (client disconnect) ends it.
+	return &followReader{ctx: ctx, f: f}, nil
+}
+
+// followReader reads a growing log file, blocking at EOF until more data
+// is written — the behavior of `tail -f`. It stops when the context is
+// cancelled (the client disconnected).
+type followReader struct {
+	ctx context.Context
+	f   *os.File
+}
+
+func (fr *followReader) Read(p []byte) (int, error) {
+	for {
+		n, err := fr.f.Read(p)
+		if n > 0 {
+			return n, nil // got data, return it
+		}
+		if err != nil && err != io.EOF {
+			return 0, err // a real error
+		}
+		// At EOF — wait a moment, then check for new data. Bail if the
+		// client has gone away.
+		select {
+		case <-fr.ctx.Done():
+			return 0, io.EOF // client disconnected — end the stream
+		case <-time.After(200 * time.Millisecond):
+			// loop and try reading again — the file may have grown
+		}
+	}
+}
+
+func (fr *followReader) Close() error {
+	return fr.f.Close()
 }
 
 // Exec runs a command inside a running container. Stubbed for now —

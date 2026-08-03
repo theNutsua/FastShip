@@ -45,7 +45,10 @@ type Engine interface {
 	// The caller owns the returned reader and must close it. The stream
 	// stays open and follows new output until closed or the component
 	// exits.
-	Logs(ctx context.Context, h Handle) (io.ReadCloser, error)
+	// Logs returns a reader over a container's output. If follow is true,
+	// the reader streams new output as it arrives rather than stopping at
+	// the current end of the log.
+	Logs(ctx context.Context, h Handle, follow bool) (io.ReadCloser, error)
 
 	// Exec runs a command inside a running component and attaches to it.
 	// This is what powers "fastship shell" — an interactive session, or a

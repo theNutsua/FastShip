@@ -2,7 +2,6 @@ package daemon
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 
 	"github.com/theNutsua/FastShip/internal/engine"
@@ -20,11 +19,11 @@ func (d *daemon) handleLogs(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, fmt.Errorf("missing ?name="))
 		return
 	}
+	follow := r.URL.Query().Get("follow") == "true"
 
-	// Ask the engine for the component's logs. The engine owns container
-	// I/O, so logs come through it — not by the daemon reading files behind
-	// the engine's back.
-	rc, err := d.engine.Logs(r.Context(), engine.Handle{Name: name})
+	// r.Context() is cancelled when the client disconnects — passing it to
+	// the engine lets a followed stream stop when the CLI is Ctrl+C'd.
+	rc, err := d.engine.Logs(r.Context(), engine.Handle{Name: name}, follow)
 	if err != nil {
 		writeError(w, http.StatusNotFound,
 			fmt.Errorf("no logs for %q (is it running?)", name))
@@ -34,5 +33,21 @@ func (d *daemon) handleLogs(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
-	io.Copy(w, rc)
+
+	// Flush as we go so lines reach the client immediately, not buffered
+	// until the handler returns (which, when following, is never).
+	flusher, _ := w.(http.Flusher)
+	buf := make([]byte, 4096)
+	for {
+		n, err := rc.Read(buf)
+		if n > 0 {
+			w.Write(buf[:n])
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+		if err != nil {
+			return
+		}
+	}
 }
