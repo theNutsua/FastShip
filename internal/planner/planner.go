@@ -69,7 +69,6 @@ func Build(cfg *config.Config) (*Plan, error) {
 		return nil, err
 	}
 	plan.Specs = append(plan.Specs, appSpec)
-
 	return plan, nil
 }
 
@@ -114,6 +113,25 @@ func planApp(cfg *config.Config, serviceConns map[string]string) (engine.Spec, e
 		ports = append(ports, cfg.Port)
 	}
 
+	// Inject declared secrets. The app lists secret NAMES in its config;
+	// FastShip looks each up in the encrypted store and injects the value.
+	// Values live only in the store — never in config or plaintext state.
+	if len(cfg.Secrets) > 0 {
+		store, err := secrets.Open()
+		if err != nil {
+			return engine.Spec{}, fmt.Errorf("opening secret store: %w", err)
+		}
+		for _, sec := range cfg.Secrets {
+			val, ok := store.Get(sec.Name)
+			if !ok {
+				return engine.Spec{}, fmt.Errorf(
+					"app %s needs secret %q, but it is not set\n"+
+						"set it with:  fastship secret set %s <value>",
+					cfg.Name, sec.Name, sec.Name)
+			}
+			env[sec.Name] = val
+		}
+	}
 	// The command to run depends on the runtime. The Go recipe compiles a
 	// single binary placed at /app, so Go apps run "/app". Other runtimes
 	// (Node, Python) keep their source and run an interpreter command that

@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -177,10 +179,13 @@ var debugCmd = &cobra.Command{
 // For engineers who want a focused view they can pipe or grep.
 var logsCmd = &cobra.Command{
 	Use:   "logs [app]",
-	Short: "Stream logs from an app",
+	Short: "Show logs for a running app",
 	Args:  cobra.ExactArgs(1),
 	Run: func(c *cobra.Command, args []string) {
-		fmt.Printf("logs: %s — not implemented\n", args[0])
+		if err := clientLogs(args[0]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
 	},
 }
 
@@ -313,6 +318,30 @@ var scaleCmd = &cobra.Command{
 	Run: func(c *cobra.Command, args []string) {
 		fmt.Printf("scale: %s to %s — not yet implemented\n", args[0], args[1])
 	},
+}
+
+func clientLogs(name string) error {
+	if err := ensureDaemon(); err != nil {
+		return err
+	}
+	client := newClient()
+	resp, err := client.Get("http://localhost/logs?name=" + name)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		var e struct {
+			Error string `json:"error"`
+		}
+		json.NewDecoder(resp.Body).Decode(&e)
+		return fmt.Errorf("%s", e.Error)
+	}
+
+	// Stream the logs to our stdout.
+	io.Copy(os.Stdout, resp.Body)
+	return nil
 }
 
 // Wiring

@@ -220,7 +220,7 @@ func (e *Engine) Start(ctx context.Context, spec engine.Spec) (engine.Handle, er
 	if spec.WorkDir != "" {
 		opts = append(opts, oci.WithProcessCwd(spec.WorkDir))
 	}
-	
+
 	// Override the start command if the Spec provides one.
 	if len(spec.Cmd) > 0 {
 		opts = append(opts, oci.WithProcessArgs(spec.Cmd...))
@@ -244,10 +244,22 @@ func (e *Engine) Start(ctx context.Context, spec engine.Spec) (engine.Handle, er
 		return engine.Handle{}, fmt.Errorf("creating container %s: %w", spec.Name, err)
 	}
 
-	// 4. Create the task — the actual OS process. cio.NullIO discards
-	//    output for now; the Logs method will wire real IO later. For
-	//    this first milestone we just need the process to run.
-	task, err := container.NewTask(ctx, cio.NullIO)
+	// Capture the container's output to a log file instead of discarding
+	// it. This is what makes `fastship logs` possible — and what would have
+	// made silent container crashes visible all along. Each component gets
+	// its own log file named by its name.
+	logPath := filepath.Join("/var/lib/fastship/logs", spec.Name+".log")
+	if err := os.MkdirAll(filepath.Dir(logPath), 0755); err != nil {
+		return engine.Handle{}, fmt.Errorf("creating log dir: %w", err)
+	}
+	logFile, err := os.Create(logPath)
+	if err != nil {
+		return engine.Handle{}, fmt.Errorf("creating log file: %w", err)
+	}
+
+	// cio.NewCreator with output redirected to our file. containerd writes
+	// the container's stdout and stderr here.
+	task, err := container.NewTask(ctx, cio.NewCreator(cio.WithStreams(nil, logFile, logFile)))
 	if err != nil {
 		// Clean up the container we just made, or it leaks.
 		container.Delete(ctx, containerd.WithSnapshotCleanup)
@@ -384,8 +396,17 @@ func (e *Engine) Stop(ctx context.Context, h engine.Handle, drain time.Duration)
 // Logs streams a container's output. Stubbed for this first milestone —
 // it needs the task to be created with a real IO creator instead of
 // NullIO, which we wire once the basic lifecycle is proven.
+// Logs returns a reader over a container's captured output.
+// The engine captures each container's stdout and stderr to a log file
+// when the task is created. This opens that file for reading. The caller
+// streams from it and closes it when done.
 func (e *Engine) Logs(ctx context.Context, h engine.Handle) (io.ReadCloser, error) {
-	return nil, fmt.Errorf("logs not yet implemented")
+	logPath := filepath.Join("/var/lib/fastship/logs", h.Name+".log")
+	f, err := os.Open(logPath)
+	if err != nil {
+		return nil, fmt.Errorf("no logs for %s: %w", h.Name, err)
+	}
+	return f, nil // *os.File is an io.ReadCloser; caller closes it
 }
 
 // Exec runs a command inside a running container. Stubbed for now —
