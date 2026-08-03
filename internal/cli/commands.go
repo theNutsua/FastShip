@@ -198,50 +198,61 @@ var shellCmd = &cobra.Command{
 
 // Secrets
 
-// secretsCmd is a parent with no Run of its own. Typing
-// "ship secrets" prints help listing its subcommands.
-
-var secretsCmd = &cobra.Command{
-	Use:   "secrets",
+var secretCmd = &cobra.Command{
+	Use:   "secret",
 	Short: "Manage secrets",
 }
 
-// secretsSetCmd stores an encrypted secret.
-
-// The value is encrypted at rest and injected into containers at
-// runtime. It never touches fastship.yaml, git, or any log output.
-var secretsSetCmd = &cobra.Command{
-	Use:   "set [key] [value]",
-	Short: "Set a secret",
+var secretSetCmd = &cobra.Command{
+	Use:   "set [name] [value]",
+	Short: "Store a secret",
 	Args:  cobra.ExactArgs(2),
 	Run: func(c *cobra.Command, args []string) {
-		key := args[0]
-		// Deliberately printing only the key, never args[1].
-		// A secret value must never appear in terminal output.
-		fmt.Printf("secrets set: %s — not implemented\n", key)
+		req := map[string]string{"name": args[0], "value": args[1]}
+		if err := post("/secret/set", req, nil); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		fmt.Printf("secret %q set\n", args[0])
 	},
 }
 
-// secretsRotateCmd replaces a secret's value with zero downtime.
-
-// The old value stays valid for a short drain window while the new
-// one propagates, so running containers never see a gap.
-var secretsRotateCmd = &cobra.Command{
-	Use:   "rotate [key]",
-	Short: "Rotate a secret",
+var secretGetCmd = &cobra.Command{
+	Use:   "get [name]",
+	Short: "Reveal a secret's value",
 	Args:  cobra.ExactArgs(1),
 	Run: func(c *cobra.Command, args []string) {
-		fmt.Printf("secrets rotate: %s — not implemented\n", args[0])
+		req := map[string]string{"name": args[0]}
+		var resp struct {
+			Value string `json:"value"`
+		}
+		if err := post("/secret/get", req, &resp); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		fmt.Println(resp.Value)
 	},
 }
 
-// secretsListCmd shows secret names only — never values.
-var secretsListCmd = &cobra.Command{
+var secretListCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List all secrets",
+	Short: "List secret names",
 	Args:  cobra.NoArgs,
 	Run: func(c *cobra.Command, args []string) {
-		fmt.Println("secrets list — not implemented")
+		var resp struct {
+			Names []string `json:"names"`
+		}
+		if err := post("/secret/list", map[string]string{}, &resp); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
+		if len(resp.Names) == 0 {
+			fmt.Println("no secrets set")
+			return
+		}
+		for _, name := range resp.Names {
+			fmt.Println(name)
+		}
 	},
 }
 
@@ -320,6 +331,6 @@ func init() {
 	debugCmd.Flags().StringP("env", "e", "local", "environment")
 
 	// Attach subcommands. Without this, "ship secrets set" is unknown.
-	secretsCmd.AddCommand(secretsSetCmd, secretsRotateCmd, secretsListCmd)
+	secretCmd.AddCommand(secretSetCmd, secretGetCmd, secretListCmd)
 	targetCmd.AddCommand(targetAddCmd, targetListCmd)
 }
