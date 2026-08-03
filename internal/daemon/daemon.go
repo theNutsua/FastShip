@@ -69,6 +69,9 @@ func Run() error {
 	mux.HandleFunc("/health", handleHealth)
 	mux.HandleFunc("/run", d.handleRun) // methods on d, so they can use the engine
 	mux.HandleFunc("/stop", d.handleStop)
+	mux.HandleFunc("/secret/set", d.handleSecretSet)
+	mux.HandleFunc("/secret/get", d.handleSecretGet)
+	mux.HandleFunc("/secret/list", d.handleSecretList)
 
 	fmt.Printf("shipd listening on %s\n", socketPath)
 	return http.Serve(listener, mux)

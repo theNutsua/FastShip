@@ -53,7 +53,7 @@ func init() {
 		shellCmd,
 
 		// commands with their own subcommands
-		secretsCmd,
+		secretCmd,
 		targetCmd,
 	)
 }

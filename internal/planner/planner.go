@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	"github.com/theNutsua/FastShip/internal/engine"
-	"github.com/theNutsua/FastShip/internal/state"
+	"github.com/theNutsua/FastShip/internal/secrets"
 	"github.com/theNutsua/FastShip/pkg/config"
 )
 
@@ -49,7 +49,10 @@ func Build(cfg *config.Config) (*Plan, error) {
 		// This is what makes the password STABLE across runs — postgres
 		// initializes its data with these, and later runs reuse the same
 		// ones so authentication keeps working.
-		creds := loadOrCreateCredentials(cfg.Name, svc.Name)
+		creds, err := loadOrCreateCredentials(cfg.Name, svc.Name)
+		if err != nil {
+			return nil, err
+		}
 
 		resolved, err := resolveService(svc, cfg.Name, creds)
 		if err != nil {
@@ -143,21 +146,34 @@ func planApp(cfg *config.Config, serviceConns map[string]string) (engine.Spec, e
 	}, nil
 }
 
-func loadOrCreateCredentials(app, service string) credentials {
-	st, err := state.Load()
-	if err == nil {
-		if c, ok := st.GetCreds(app, service); ok {
-			return credentials{User: c.User, Pass: c.Pass, DB: c.DB}
-		}
+// loadOrCreateCredentials returns a service's credentials, generating and
+// storing them on first use. They live in the ENCRYPTED secret store, not
+// plaintext state — so database passwords are never sitting readable on
+// disk. Generated once and reused, so the service's data stays accessible
+// across restarts.
+func loadOrCreateCredentials(app, service string) (credentials, error) {
+	store, err := secrets.Open()
+	if err != nil {
+		return credentials{}, err
 	}
-	// None stored — generate fresh and persist.
+
+	// Secrets are keyed so each service's credentials are distinct.
+	prefix := "svc/" + app + "/" + service + "/"
+
+	user, hasUser := store.Get(prefix + "user")
+	pass, hasPass := store.Get(prefix + "pass")
+	db, hasDB := store.Get(prefix + "db")
+
+	if hasUser && hasPass && hasDB {
+		return credentials{User: user, Pass: pass, DB: db}, nil
+	}
+
+	// None (or incomplete) — generate fresh and store encrypted.
 	creds := generateCredentials(app)
-	if st != nil {
-		st.PutCreds(app, service, state.Credentials{
-			User: creds.User, Pass: creds.Pass, DB: creds.DB,
-		})
-	}
-	return creds
+	store.Set(prefix+"user", creds.User)
+	store.Set(prefix+"pass", creds.Pass)
+	store.Set(prefix+"db", creds.DB)
+	return creds, nil
 }
 
 // languageOf strips the version from a runtime string: "go@1.26" → "go".
