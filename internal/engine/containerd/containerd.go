@@ -27,6 +27,8 @@ import (
 	specs "github.com/opencontainers/runtime-spec/specs-go"
 	fsnet "github.com/theNutsua/FastShip/internal/network"
 
+	"github.com/containerd/cgroups/v3/cgroup2/stats"
+	"github.com/containerd/typeurl/v2"
 	"github.com/theNutsua/FastShip/internal/engine"
 )
 
@@ -529,6 +531,46 @@ func releaseCNIIPs(name string) {
 	}
 }
 
+// Metrics returns a component's current CPU and memory usage, read from
+// containerd's cgroup accounting for the task.
+func (e *Engine) Metrics(ctx context.Context, h engine.Handle) (engine.Metrics, error) {
+	ctx = withNamespace(ctx)
+
+	container, err := e.client.LoadContainer(ctx, h.Name)
+	if err != nil {
+		return engine.Metrics{}, fmt.Errorf("loading %s: %w", h.Name, err)
+	}
+	task, err := container.Task(ctx, nil)
+	if err != nil {
+		return engine.Metrics{}, fmt.Errorf("no running task for %s: %w", h.Name, err)
+	}
+
+	// Pull the raw metrics blob and unpack it into cgroup v2 stats.
+	metric, err := task.Metrics(ctx)
+	if err != nil {
+		return engine.Metrics{}, fmt.Errorf("reading metrics: %w", err)
+	}
+	data, err := typeurl.UnmarshalAny(metric.Data)
+	if err != nil {
+		return engine.Metrics{}, fmt.Errorf("unmarshalling metrics: %w", err)
+	}
+
+	m := engine.Metrics{}
+	if s, ok := data.(*stats.Metrics); ok {
+		if s.Memory != nil {
+			m.MemoryBytes = s.Memory.Usage
+			m.MemoryLimitBytes = s.Memory.UsageLimit
+		}
+		if s.CPU != nil {
+			// CPU usage comes as cumulative nanoseconds; a true percentage
+			// needs two samples over time. For a first version we report
+			// the raw usage; the TUI can compute deltas between polls.
+			m.CPUPercent = float64(s.CPU.UsageUsec) / 1e6 // placeholder
+		}
+	}
+	return m, nil
+}
+
 // mountOptions returns the bind-mount options. rbind makes it a recursive
 // bind; ro adds read-only when requested.
 func mountOptions(readOnly bool) []string {
@@ -536,4 +578,22 @@ func mountOptions(readOnly bool) []string {
 		return []string{"rbind", "ro"}
 	}
 	return []string{"rbind", "rw"}
+}
+
+// ImageSize returns the total size of an image's content in bytes.
+func (e *Engine) ImageSize(ctx context.Context, ref string) (int64, error) {
+	ctx = withNamespace(ctx)
+
+	image, err := e.client.GetImage(ctx, ref)
+	if err != nil {
+		return 0, fmt.Errorf("image %s not found: %w", ref, err)
+	}
+
+	// Sum the size of the image's content. Size(ctx) walks the image's
+	// blobs and returns the total.
+	size, err := image.Size(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("reading size of %s: %w", ref, err)
+	}
+	return size, nil
 }

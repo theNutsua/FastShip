@@ -167,12 +167,16 @@ func clientStop(app string) error {
 // This is ship's headline feature — the thing that replaces having
 // four terminals open at once.
 
+// debugCmd launches the live debug TUI for an app.
 var debugCmd = &cobra.Command{
 	Use:   "debug [app]",
-	Short: "Open the debug TUI",
+	Short: "Live dashboard: status, images, memory, and logs",
 	Args:  cobra.ExactArgs(1),
 	Run: func(c *cobra.Command, args []string) {
-		fmt.Printf("debug: %s — not implemented\n", args[0])
+		if err := runDebugTUI(args[0]); err != nil {
+			fmt.Fprintln(os.Stderr, "error:", err)
+			os.Exit(1)
+		}
 	},
 }
 

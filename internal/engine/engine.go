@@ -54,6 +54,12 @@ type Engine interface {
 	// This is what powers "fastship shell" — an interactive session, or a
 	// one-off command, inside an already-running component.
 	Exec(ctx context.Context, h Handle, cmd ExecSpec) error
+
+	// Metrics returns current resource usage for a running component.
+	Metrics(ctx context.Context, h Handle) (Metrics, error)
+
+	// ImageSize returns the size in bytes of an image in the store.
+	ImageSize(ctx context.Context, ref string) (int64, error)
 }
 
 // Handle identifies a running component so later calls can refer back to
@@ -113,6 +119,16 @@ type Spec struct {
 	Hardened bool
 
 	WorkDir string // working directory inside the container; empty = default (/)
+}
+
+// Metrics is a component's current resource usage.
+type Metrics struct {
+	// CPUPercent is CPU usage as a percentage (0-100 per core).
+	CPUPercent float64
+	// MemoryBytes is current memory use.
+	MemoryBytes uint64
+	// MemoryLimitBytes is the cap, for showing "48MB / 512MB".
+	MemoryLimitBytes uint64
 }
 
 // Mount attaches persistent storage into a component.
