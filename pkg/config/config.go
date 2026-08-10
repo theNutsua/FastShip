@@ -66,6 +66,12 @@ type Config struct {
 	// When this is non-empty the outer Config is treated as a container
 	// for the others rather than an app in its own right.
 	Apps map[string]*Config `yaml:"apps"`
+
+	// Release lists commands to run after services are up but before the
+	// app starts serving — database migrations, asset compilation, etc.
+	// This is what lets framework apps (Django's migrate, Rails' db:migrate)
+	// prepare themselves. Each runs in the app's image, in order.
+	Release []string `yaml:"release"`
 }
 
 // Service is a dependency. It accepts two YAML shapes:

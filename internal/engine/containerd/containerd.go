@@ -597,3 +597,94 @@ func (e *Engine) ImageSize(ctx context.Context, ref string) (int64, error) {
 	}
 	return size, nil
 }
+
+// RunOnce runs a command to completion in a fresh container from the
+// spec's image, then cleans up. Returns the command's exit code.
+//
+// Release commands (migrations, collectstatic) use this: they need the
+// app's image, env, and network access to the database, but they run once
+// and exit rather than staying up.
+func (e *Engine) RunOnce(ctx context.Context, spec engine.Spec, cmd []string) (int, error) {
+	ctx = withNamespace(ctx)
+
+	// Use a distinct name so a release container never collides with the
+	// app's own container.
+	name := spec.Name + "-release"
+	e.cleanupExisting(ctx, name) // clear any leftover from a prior run
+
+	image, err := e.client.GetImage(ctx, spec.Image)
+	if err != nil {
+		return -1, fmt.Errorf("image %s not found: %w", spec.Image, err)
+	}
+	if unpacked, _ := image.IsUnpacked(ctx, "overlayfs"); !unpacked {
+		if err := image.Unpack(ctx, "overlayfs"); err != nil {
+			return -1, fmt.Errorf("unpacking image: %w", err)
+		}
+	}
+
+	// Build opts: same image config, the app's env, the release command,
+	// the working directory, and DNS so it can reach services by name.
+	opts := []oci.SpecOpts{oci.WithImageConfig(image)}
+	opts = append(opts, oci.WithProcessArgs(cmd...))
+	if spec.WorkDir != "" {
+		opts = append(opts, oci.WithProcessCwd(spec.WorkDir))
+	}
+	for k, v := range spec.Env {
+		opts = append(opts, oci.WithEnv([]string{k + "=" + v}))
+	}
+	resolvPath, err := resolvConfPath()
+	if err != nil {
+		return -1, err
+	}
+	opts = append(opts, oci.WithMounts([]specs.Mount{{
+		Destination: "/etc/resolv.conf", Type: "bind",
+		Source: resolvPath, Options: []string{"rbind", "ro"},
+	}}))
+
+	container, err := e.client.NewContainer(ctx, name,
+		containerd.WithNewSnapshot(name+"-snapshot", image),
+		containerd.WithNewSpec(opts...),
+	)
+	if err != nil {
+		return -1, fmt.Errorf("creating release container: %w", err)
+	}
+	// Always clean up the release container when done.
+	defer container.Delete(ctx, containerd.WithSnapshotCleanup)
+
+	// Capture output to the app's log file so `fastship logs` shows release
+	// output too (migrations printing progress, etc.).
+	logPath := filepath.Join("/var/lib/fastship/logs", name+".log")
+	os.MkdirAll(filepath.Dir(logPath), 0755)
+	logFile, _ := os.Create(logPath)
+	defer logFile.Close()
+
+	task, err := container.NewTask(ctx, cio.NewCreator(cio.WithStreams(nil, logFile, logFile)))
+	if err != nil {
+		return -1, fmt.Errorf("creating release task: %w", err)
+	}
+	defer task.Delete(ctx)
+
+	// Attach to the network so the release command can reach the database.
+	netnsPath := fmt.Sprintf("/proc/%d/ns/net", task.Pid())
+	if _, err := e.network.attach(ctx, name, netnsPath); err != nil {
+		return -1, fmt.Errorf("networking release container: %w", err)
+	}
+	defer e.network.detach(ctx, name, netnsPath)
+
+	// Arm the exit channel BEFORE starting, then run and wait.
+	exitCh, err := task.Wait(ctx)
+	if err != nil {
+		return -1, err
+	}
+	if err := task.Start(ctx); err != nil {
+		return -1, fmt.Errorf("starting release command: %w", err)
+	}
+
+	// Wait for it to finish and read the exit code.
+	status := <-exitCh
+	code, _, err := status.Result()
+	if err != nil {
+		return -1, err
+	}
+	return int(code), nil
+}

@@ -75,13 +75,23 @@ func (d *daemon) handleRun(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 5. Start each spec through the daemon's long-lived engine.
+	// The app is the last spec; services are everything before it. We start
+	// services first, then run release commands, then start the app — so
+	// migrations can reach a running database before the app serves.
+	if len(plan.Specs) == 0 {
+		writeError(w, http.StatusInternalServerError, fmt.Errorf("nothing to run"))
+		return
+	}
+	appSpec := plan.Specs[len(plan.Specs)-1]
+	serviceSpecs := plan.Specs[:len(plan.Specs)-1]
+
 	var started []engine.Handle
 	var names []string
-	for _, spec := range plan.Specs {
+
+	//  Start managed services first.
+	for _, spec := range serviceSpecs {
 		h, err := d.engine.Start(ctx, spec)
 		if err != nil {
-			// Roll back what we started.
 			for _, sh := range started {
 				d.engine.Stop(ctx, sh, 0)
 			}
@@ -93,14 +103,57 @@ func (d *daemon) handleRun(w http.ResponseWriter, r *http.Request) {
 		names = append(names, spec.Name)
 	}
 
-	// 6. Record state.
+	//  Run release commands in one-shot containers from the app's image,
+	// after services are up but before the app starts. Migrations, asset
+	// compilation, and other framework setup happen here. Any failure aborts
+	// the run and rolls back the services.
+	for _, releaseCmd := range cfg.Release {
+		fmt.Printf("→ release: %s\n", releaseCmd)
+		// Run through a shell so quotes, pipes, and && work naturally —
+		// release commands are shell commands as the user would type them.
+		code, err := d.engine.RunOnce(ctx, appSpec, []string{"sh", "-c", releaseCmd})
+		if err != nil {
+			for _, sh := range started {
+				d.engine.Stop(ctx, sh, 0)
+			}
+			writeError(w, http.StatusInternalServerError,
+				fmt.Errorf("release command %q failed: %w", releaseCmd, err))
+			return
+		}
+		if code != 0 {
+			for _, sh := range started {
+				d.engine.Stop(ctx, sh, 0)
+			}
+			writeError(w, http.StatusInternalServerError,
+				fmt.Errorf("release command %q exited with code %d — see: fastship logs %s-release",
+					releaseCmd, code, cfg.Name))
+			return
+		}
+	}
+
+	//  Start the app itself.
+	appHandle, err := d.engine.Start(ctx, appSpec)
+	if err != nil {
+		for _, sh := range started {
+			d.engine.Stop(ctx, sh, 0)
+		}
+		writeError(w, http.StatusInternalServerError,
+			fmt.Errorf("starting %s: %w", appSpec.Name, err))
+		return
+	}
+	started = append(started, appHandle)
+	names = append(names, appSpec.Name)
+
+	// 6. Record state. Components are the services plus the app, in the
+	// order they were started.
 	st, err := state.Load()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	allSpecs := append(serviceSpecs, appSpec)
 	app := &state.App{Name: cfg.Name}
-	for i, spec := range plan.Specs {
+	for i, spec := range allSpecs {
 		app.Components = append(app.Components, state.Component{
 			Name: spec.Name, ID: started[i].ID, Image: spec.Image,
 		})

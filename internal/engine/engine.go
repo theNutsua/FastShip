@@ -60,6 +60,12 @@ type Engine interface {
 
 	// ImageSize returns the size in bytes of an image in the store.
 	ImageSize(ctx context.Context, ref string) (int64, error)
+
+	// RunOnce runs a one-shot command in a container from the given spec's
+	// image, waits for it to finish, and returns its exit code. Used for
+	// release commands (migrations, etc.) — run to completion, not left
+	// running. The spec provides the image and env; cmd is what to run.
+	RunOnce(ctx context.Context, spec Spec, cmd []string) (int, error)
 }
 
 // Handle identifies a running component so later calls can refer back to
