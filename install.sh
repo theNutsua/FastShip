@@ -17,7 +17,7 @@
 
 set -euo pipefail
 
-# --- helpers -----------------------------------------------------------
+#  helpers
 
 # say prints a step header so the user can follow along.
 say()  { printf "\n\033[1;34m==>\033[0m %s\n" "$1"; }
@@ -35,7 +35,7 @@ require_root() {
 # have checks whether a command exists.
 have() { command -v "$1" >/dev/null 2>&1; }
 
-# --- versions (pin so installs are reproducible) -----------------------
+#  versions (pin so installs are reproducible)
 
 BUILDKIT_VERSION="v0.18.2"
 CNI_VERSION="v1.6.2"
@@ -44,7 +44,7 @@ CNI_VERSION="v1.6.2"
 # run via sudo, SUDO_USER holds the real user; fall back to the login name.
 TARGET_USER="${SUDO_USER:-$(logname 2>/dev/null || echo "")}"
 
-# --- 1. containerd -----------------------------------------------------
+# 1. containerd
 
 install_containerd() {
   say "containerd"
@@ -61,7 +61,7 @@ install_containerd() {
   ok "containerd running"
 }
 
-# --- 2. buildkit -------------------------------------------------------
+# 2. buildkit
 
 install_buildkit() {
   say "buildkit"
@@ -101,7 +101,7 @@ EOF
   fi
 }
 
-# --- 3. CNI plugins ----------------------------------------------------
+# 3. CNI plugins
 
 install_cni() {
   say "CNI plugins"
@@ -118,7 +118,7 @@ install_cni() {
   fi
 }
 
-# --- 4. network config -------------------------------------------------
+# 4. network config
 
 write_network_config() {
   say "FastShip network"
@@ -150,31 +150,23 @@ EOF
   fi
 }
 
-# --- 5. build and install binaries -------------------------------------
+# 5. build and install binaries
 
 install_binaries() {
   say "FastShip binaries"
-  if ! have go; then
-    echo "  Go is required to build from source but was not found." >&2
-    echo "  Install Go, or use a release build of FastShip." >&2
-    exit 1
-  fi
-
-  # Build both binaries. Run from the repo root (where this script lives).
-  local repo_root
-  repo_root="$(cd "$(dirname "$0")" && pwd)"
-
-  ( cd "$repo_root" && go build -o /tmp/fastship ./cmd/fastship )
-  ( cd "$repo_root" && go build -o /tmp/shipd ./cmd/shipd )
-
-  # Install atomically (mv over any running binary avoids "text file busy").
+  local base="https://github.com/theNutsua/FastShip/releases/download/v0.1.0"
+  curl -fsSL "$base/fastship" -o /tmp/fastship
+  curl -fsSL "$base/shipd" -o /tmp/shipd.new
+  chmod +x /tmp/fastship /tmp/shipd.new
   mv /tmp/fastship /usr/local/bin/fastship
-  # shipd may be running as a service; stop, replace, restart below.
-  mv /tmp/shipd /usr/local/bin/shipd.new
-  ok "binaries built and staged"
+  mv /tmp/shipd.new /usr/local/bin/shipd.new   
+  ok "binaries downloaded"
 }
 
-# --- 6. fastship group -------------------------------------------------
+  # Build both binaries. Run from the repo root (where this script lives).
+  
+
+# 6. fastship group
 
 setup_group() {
   say "fastship group"
@@ -196,7 +188,7 @@ setup_group() {
   fi
 }
 
-# --- 7. shipd service --------------------------------------------------
+# 7. shipd service
 
 install_shipd_service() {
   say "shipd service"
@@ -235,7 +227,7 @@ EOF
   ok "shipd running"
 }
 
-# --- main --------------------------------------------------------------
+# main
 
 main() {
   require_root
