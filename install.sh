@@ -159,7 +159,7 @@ install_binaries() {
   curl -fsSL "$base/shipd" -o /tmp/shipd.new
   chmod +x /tmp/fastship /tmp/shipd.new
   mv /tmp/fastship /usr/local/bin/fastship
-  mv /tmp/shipd.new /usr/local/bin/shipd.new   
+  mv /tmp/shipd.new /usr/local/bin/shipd.new
   ok "binaries downloaded"
 }
 

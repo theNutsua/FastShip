@@ -20,7 +20,7 @@ import (
 // "ship" with no arguments. It has no Run function of its own, so
 // calling it bare prints the help text listing all subcommands.
 var rootCmd = &cobra.Command{
-	Use:   "ship",
+	Use:   "fastship",
 	Short: "One tool. Local to production.",
 }
 
