@@ -688,3 +688,59 @@ func (e *Engine) RunOnce(ctx context.Context, spec engine.Spec, cmd []string) (i
 	}
 	return int(code), nil
 }
+
+// ReconcileDNS rebuilds the DNS table from containers that are actually
+// running. The DNS table is in-memory, so a daemon restart loses it — but
+// containers keep running in containerd. This re-registers each running
+// container's name and IP so service discovery survives a daemon restart.
+// Called once at daemon startup.
+func (e *Engine) ReconcileDNS(ctx context.Context) error {
+	ctx = withNamespace(ctx)
+
+	containers, err := e.client.Containers(ctx)
+	if err != nil {
+		return fmt.Errorf("listing containers: %w", err)
+	}
+
+	for _, c := range containers {
+		task, err := c.Task(ctx, nil)
+		if err != nil {
+			continue // not running
+		}
+		status, err := task.Status(ctx)
+		if err != nil || status.Status != containerd.Running {
+			continue
+		}
+		// Recover the IP from CNI's records and re-register.
+		name := c.ID()
+		ip := lookupContainerIP(name)
+		if ip != "" {
+			e.dns.Register(name, ip)
+			fmt.Printf("  reconciled %s → %s\n", name, ip)
+		}
+	}
+	return nil
+}
+
+// lookupContainerIP finds a container's IP from CNI's records — files under
+// the network dir named by IP, each containing the owning container's name.
+func lookupContainerIP(name string) string {
+	dir := "/var/lib/cni/networks/fastship"
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		if entry.Name() == "lock" || strings.HasPrefix(entry.Name(), "last_reserved") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			continue
+		}
+		if strings.Contains(string(data), name) {
+			return entry.Name() // filename is the IP
+		}
+	}
+	return ""
+}
