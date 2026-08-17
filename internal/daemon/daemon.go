@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -33,6 +34,13 @@ func Run() error {
 		return fmt.Errorf("starting engine: %w", err)
 	}
 	defer cdEngine.Close()
+
+	// Rebuild the DNS table from containers that are still running, so a
+	// daemon restart does not break name resolution for live apps. The
+	// containers survive the daemon; only the in-memory DNS table is lost.
+	if err := cdEngine.ReconcileDNS(context.Background()); err != nil {
+		fmt.Printf("warning: DNS reconcile failed: %v\n", err)
+	}
 
 	d := &daemon{engine: cdEngine}
 
