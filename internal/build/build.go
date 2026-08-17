@@ -23,6 +23,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	bkclient "github.com/moby/buildkit/client"
 	"github.com/moby/buildkit/client/llb"
@@ -62,24 +63,34 @@ func New() *Builder {
 
 // Build compiles the source at srcPath into a runnable image for the
 // given config, and returns a reference to it.
-// It selects a recipe based on the config's runtime — the language and
-// version that pkg/detect already resolved. Each recipe knows how to
-// compile that language and assemble a minimal final image.
+//
+// It chooses one of two paths:
+//   - Static apps (config has `static:` set, e.g. React or Vue) build to
+//     plain files served by FastShip's built-in static server. This path
+//     is language-independent — a static app is served, not run.
+//   - Everything else selects a recipe by language (Go, Node, Python),
+//     which knows how to compile that language into a minimal image.
 func (b *Builder) Build(ctx context.Context, srcPath string, cfg *config.Config) (*Result, error) {
-	lang := languageOf(cfg.Runtime)
-
-	recipe, ok := recipes[lang]
-	if !ok {
-		return nil, fmt.Errorf(
-			"no build recipe for runtime %q\n\nsupported for building: go", lang)
-	}
-
 	imageRef := "fastship/" + cfg.Name + ":latest"
 
-	// The recipe produces the LLB graph — the description of the build.
-	state := recipe(srcPath, imageRef)
+	// Decide the build graph. A static app is served by FastShip's static
+	// server, so it uses the static recipe regardless of language.
+	var state llb.State
+	if cfg.Static != "" {
+		state = staticRecipe(cfg.Build, cfg.Static)
+	} else {
+		lang := languageOf(cfg.Runtime)
+		recipe, ok := recipes[lang]
+		if !ok {
+			return nil, fmt.Errorf(
+				"no build recipe for runtime %q\n\nsupported for building: go, node, python", lang)
+		}
+		state = recipe(srcPath, imageRef)
+	}
 
-	if err := b.run(ctx, state, srcPath, imageRef); err != nil {
+	// run() needs to know if this is a static build, so it can stage the
+	// embedded static server binary into the build context.
+	if err := b.run(ctx, state, srcPath, imageRef, cfg.Static != ""); err != nil {
 		return nil, err
 	}
 
@@ -94,14 +105,31 @@ func (b *Builder) Build(ctx context.Context, srcPath string, cfg *config.Config)
 //  2. Solve it — BuildKit actually runs the build (pull, compile, copy).
 //  3. Export the result as an image containerd can then run.
 //
-// The build runs in one goroutine while a second goroutine streams
-// progress to the terminal, which is why errgroup coordinates them.
-func (b *Builder) run(ctx context.Context, state llb.State, srcPath, imageRef string) error {
+// The build runs in one goroutine while a second streams progress to the
+// terminal, which is why errgroup coordinates them.
+//
+// When isStatic is true, FastShip's embedded static server binary is
+// written into the build context first (and removed after), so the static
+// recipe can copy it into the final image without a separate build stage.
+func (b *Builder) run(ctx context.Context, state llb.State, srcPath, imageRef string, isStatic bool) error {
 	c, err := bkclient.New(ctx, b.address)
 	if err != nil {
 		return fmt.Errorf("connecting to buildkit: %w", err)
 	}
 	defer c.Close()
+
+	// For static apps, drop the embedded static server binary into the
+	// build context so the static recipe can copy it into the final image.
+	// It is written only for this build and removed afterward, so the
+	// engineer's source directory is not littered. The defer runs even if
+	// the build fails.
+	if isStatic {
+		serverPath := filepath.Join(srcPath, ".fastship-staticserver")
+		if err := os.WriteFile(serverPath, staticServerBinary, 0o755); err != nil {
+			return fmt.Errorf("staging static server: %w", err)
+		}
+		defer os.Remove(serverPath)
+	}
 
 	def, err := state.Marshal(ctx, llb.LinuxAmd64)
 	if err != nil {
@@ -129,6 +157,7 @@ func (b *Builder) run(ctx context.Context, state llb.State, srcPath, imageRef st
 			},
 		},
 	}
+
 	eg, ctx := errgroup.WithContext(ctx)
 	ch := make(chan *bkclient.SolveStatus)
 

@@ -138,12 +138,13 @@ func planApp(cfg *config.Config, serviceConns map[string]string) (engine.Spec, e
 	// detection already resolved into cfg.Start, e.g. "node server.js".
 	var cmd []string
 	var workDir string
-	if languageOf(cfg.Runtime) == "go" {
+	if cfg.Static != "" {
+		cmd = []string{"/staticserver"}
+		env["STATIC_DIR"] = "/static"
+	} else if languageOf(cfg.Runtime) == "go" {
 		cmd = []string{"/app"}
-		// Go binary is at an absolute path; no working dir needed.
 	} else {
 		cmd = strings.Fields(cfg.Start)
-		// Node/Python run a relative command from where their source lives.
 		workDir = "/app"
 	}
 

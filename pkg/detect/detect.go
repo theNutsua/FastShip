@@ -46,14 +46,16 @@ func Apply(repoPath string, cfg *config.Config) (*Result, error) {
 		res.Runtime = rt
 	}
 
-	if res.Start == "" {
+	// Static apps (React, Vue) are served by FastShip's static server, not
+	// by running an entry point — so they need no start command. Skip start
+	// detection when static: is set.
+	if res.Start == "" && cfg.Static == "" {
 		start, err := DetectStart(repoPath, res.Runtime)
 		if err != nil {
-			return nil, err
+			return res, err
 		}
 		res.Start = start
 	}
-
 	if res.Port == 0 {
 		// Port detection never errors. A port of 0 is legitimate — it means
 		// an internal-only service that gets no external route.

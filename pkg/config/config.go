@@ -72,6 +72,18 @@ type Config struct {
 	// This is what lets framework apps (Django's migrate, Rails' db:migrate)
 	// prepare themselves. Each runs in the app's image, in order.
 	Release []string `yaml:"release"`
+
+	// Build lists commands to run while building the image — before the
+	// image is finalized. For frontend apps this is where "npm run build"
+	// produces the static files. Runs inside the build, in order.
+	Build []string `yaml:"build"`
+
+	// Static, when set, tells FastShip to serve a directory of static files
+	// (e.g. a React build output) instead of running a server process. The
+	// value is the path, relative to the app, of the built files —
+	// "./build" for Create React App, "./dist" for Vite. When Static is
+	// set, FastShip serves these files with a built-in static server.
+	Static string `yaml:"static"`
 }
 
 // Service is a dependency. It accepts two YAML shapes:
