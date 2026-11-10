@@ -1,0 +1,5 @@
+module example.com/myapp
+
+go 1.22
+
+toolchain go1.22.4
