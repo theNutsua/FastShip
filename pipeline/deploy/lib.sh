@@ -2,6 +2,11 @@
 # deploy/lib.sh all operations as shell functions. Sourced by the Makefile.
 set -euo pipefail
 
+# Anchor everything to the pipeline root, independent of caller's pwd.
+PIPELINE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export PIPELINE_ROOT
+
+
 # Logging primitives
 log_ok()   { printf '  \033[32mOK\033[0m   %s\n' "$*" >&2; }
 log_fail() {

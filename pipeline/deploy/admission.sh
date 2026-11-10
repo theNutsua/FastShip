@@ -6,7 +6,7 @@
 a1_toolchain() {
   local want got
   if [[ ! -f go.mod ]]; then
-    log_fail "A1 toolchain: no go.mod found in $(pwd)" \
+    log_fail "A1 toolchain: no go.mod found in $(gomod)" \
              "run this from the repo root, or create go.mod"
     return 1
   fi
@@ -43,13 +43,14 @@ a2_lockfile() {
 # A3 clean tree
 a3_clean_tree() {
   local dirty
-  dirty=$(git status --porcelain)
+  # Scope to the pipeline subtree only; other repo content is out of bounds.
+  dirty=$(git -C "$PIPELINE_ROOT" status --porcelain -- .)
   if [[ -n "$dirty" ]]; then
-    log_fail "A3 clean tree: working tree is dirty" \
-             "commit or stash changes; 'git status --porcelain' shows:"$'\n'"$dirty"
+    log_fail "A3 clean tree: pipeline subtree is dirty" \
+             "commit or stash changes under $PIPELINE_ROOT:"$'\n'"$dirty"
     return 1
   fi
-  log_ok "A3 clean tree: $(git rev-parse --short HEAD)"
+  log_ok "A3 clean tree: $(git -C "$PIPELINE_ROOT" rev-parse --short HEAD)"
 }
 
 # Fingerprint
