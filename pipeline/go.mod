@@ -1,5 +1,5 @@
 module example.com/myapp
 
-go 1.22
+go 1.26
 
-toolchain go1.22.4
+toolchain go1.26.4
